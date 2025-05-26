@@ -8,7 +8,7 @@ init(autoreset=True)
 ASCII_ART = """
 ████████▄   ▄█     ▄██████▄   ▄█      ███        ▄████████  ▄████████    ▄████████    ▄████████    ▄███████▄    ▄████████    ▄████████ 
 ███   ▀███ ███    ███    ███ ███  ▀█████████▄   ███    ███ ███    ███   ███    ███   ███    ███   ███    ███   ███    ███   ███    ███ 
-███    ███ ███▌   ███    █▀  ███▌    ▀███▀▀██   ███    █▀  ███    █▀    ███    ███   ███    ███   ███    ███   ███    █▀    ███    ███ 
+███    ███ ███▌   ███    █▀  ███▌     ▀███▀▀██   ███    █▀  ███    █▀    ███    ███   ███    ███   ███    ███   ███    █▀    ███    ███ 
 ███    ███ ███▌  ▄███        ███▌     ███   ▀   ███        ███         ▄███▄▄▄▄██▀   ███    ███   ███    ███  ▄███▄▄▄      ▄███▄▄▄▄██▀ 
 ███    ███ ███▌ ▀▀███ ████▄  ███▌     ███     ▀███████████ ███        ▀▀███▀▀▀▀▀   ▀███████████ ▀█████████▀  ▀▀███▀▀▀     ▀▀███▀▀▀▀▀   
 ███    ███ ███    ███    ███ ███      ███              ███ ███    █▄  ▀███████████   ███    ███   ███          ███    █▄  ▀███████████ 
@@ -18,12 +18,26 @@ ASCII_ART = """
 made with love by wicked and the moral support of aerdisk <3
 """
 
-WEBHOOK_URL = "https://discord.com/api/webhooks/1375574553048387614/2MfnGwDxN07n2NPcwBoHKZVkXpj326zHuXRzlVtfbBZDd1hS5pGbcxHZJQhmWcrPjRWf"
+def read_webhook_url(file_path="webhook.txt"):
+    try:
+        with open(file_path, "r") as f:
+            webhook_url = f.readline().strip()
+            if not webhook_url:
+                raise ValueError("Webhook URL file is empty")
+            return webhook_url
+    except FileNotFoundError:
+        print(Fore.RED + f"Webhook file '{file_path}' not found. Please create it with a valid Discord webhook URL on the first line.")
+        exit(1)
+    except Exception as e:
+        print(Fore.RED + f"Error reading webhook file: {e}")
+        exit(1)
+
+WEBHOOK_URL = read_webhook_url()
 
 def send_webhook_message(message):
     try:
         data = {"content": message}
-        response = requests.post(WEBHOOK_URL, json=data)
+        response = requests.post(WHOOK_URL, json=data)
         if response.status_code == 204:
             print(Fore.GREEN + "Message sent successfully!")
         else:
@@ -40,7 +54,7 @@ def search_inventory(user_id, search_term):
             return None
         if response.status_code == 429:
             print(Fore.RED + "Rate limit exceeded. Waiting before retrying...")
-            time.sleep(60)  # Wait for rate limit reset
+            time.sleep(20)  # Wait for rate limit reset
             return None
         if response.status_code != 200:
             print(Fore.RED + f"Failed to get inventory for user {user_id}, status code: {response.status_code}")
@@ -61,7 +75,7 @@ def search_avatar(user_id, search_term):
             return []
         if response.status_code == 429:
             print(Fore.RED + "Rate limit exceeded. Waiting before retrying...")
-            time.sleep(60)
+            time.sleep(20)
             return []
         if response.status_code != 200:
             print(Fore.RED + f"Failed to get avatar for user {user_id}, status code: {response.status_code}")
@@ -110,8 +124,7 @@ def random_8_digits():  # 2012 account
 def random_9_digits():  # 2017 account
     return f"{random.randint(0, 999999999):09d}"
 
-def normal_search(search_term):
-    print(Fore.RED + ASCII_ART)
+def get_user_id_func():
     user_id_func = {
         '1': random_6_digits,
         '2': random_7_digits,
@@ -128,15 +141,37 @@ How old do you want the accounts to be?
 4) 2017
 Enter 1, 2, 3, or 4: """)
             if account_age_search in ['1', '2', '3', '4']:
-                break
+                return user_id_func[account_age_search]
             print(Fore.RED + "Invalid choice. Please enter 1, 2, 3, or 4.")
         except KeyboardInterrupt:
             print(Fore.RED + "\nSearch interrupted by user.")
-            return
+            exit(1)
 
-    selected_func = user_id_func[account_age_search]
+def get_usernames_from_ids(user_ids):
+    url = "https://users.roblox.com/v1/users"
+    headers = {
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "userIds": user_ids
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        if response.status_code != 200:
+            print(Fore.RED + f"Failed to fetch usernames: {response.status_code}")
+            return {}
+        data = response.json()
+        return {user['id']: user['name'] for user in data['data']}
+    except requests.RequestException as e:
+        print(Fore.RED + f"Error fetching usernames: {e}")
+        return {}
+
+def normal_search(search_term, user_id_func, fetch_usernames):
+    print(Fore.RED + ASCII_ART)
     for _ in range(10_000):
-        user_id = selected_func()  # Call the function to get a user ID
+        user_id = user_id_func()  # Call the selected function to get a user ID
         print(Fore.YELLOW + f"\nChecking user ID: {user_id}...")
 
         results = search_inventory(user_id, search_term)
@@ -150,17 +185,39 @@ Enter 1, 2, 3, or 4: """)
                 print(Fore.GREEN + f"- {item['name']} (ID: {item['assetId']})")
             with open("found_users.txt", "a") as f:
                 f.write(f"{user_id}\n")
-            print(Fore.GREEN + f"User ID {user_id} saved to found_users.txt. Stopping search.")
+            print(Fore.GREEN + f"User ID {user_id} saved to found_users.txt.")
+            
+            if fetch_usernames:
+                # Fetch username and save possible passwords
+                usernames = get_usernames_from_ids([int(user_id)])
+                if usernames:
+                    username = usernames.get(int(user_id), "Unknown")
+                    print(Fore.GREEN + f"Username for User ID {user_id}: {username}")
+                    with open("possible_passwords.txt", "a") as f:
+                        modified0 = username
+                        modified = f"{username}123"
+                        modified1 = f"{username}1234"
+                        modified2 = f"123{username}"
+                        modified3 = f"1234{username}"
+                        f.write(f"Possible Passwords For {username}:\n")
+                        f.write(f"{modified0}\n")
+                        f.write(f"{modified}\n")
+                        f.write(f"{modified1}\n")
+                        f.write(f"{modified2}\n")
+                        f.write(f"{modified3}\n")
+                    print(Fore.GREEN + f"Possible passwords for {username} saved to possible_passwords.txt")
+                else:
+                    print(Fore.RED + f"Could not fetch username for User ID {user_id}")
             break
         else:
             print(Fore.YELLOW + f"No items with '{search_term}' found in inventory or avatar for user {user_id}.")
         time.sleep(0.5)
 
-def afk_mode(search_term):
+def afk_mode(search_term, user_id_func, fetch_usernames):
     print(Fore.RED + ASCII_ART)
     last_webhook = time.time()
     while True:
-        user_id = random_7_digits()  # Default to 2009 accounts for AFK mode
+        user_id = user_id_func()  # Call the selected function to get a user ID
         print(Fore.YELLOW + f"\nChecking user ID: {user_id}...")
 
         results = search_inventory(user_id, search_term)
@@ -176,6 +233,29 @@ def afk_mode(search_term):
                 f.write(f"{user_id}\n")
             print(Fore.GREEN + f"User ID {user_id} saved to found_users.txt.")
             send_webhook_message(f"Found user ID {user_id} with items matching '{search_term}': {[item['name'] for item in results]}")
+            
+            if fetch_usernames:
+                # Fetch username and save possible passwords
+                usernames = get_usernames_from_ids([int(user_id)])
+                if usernames:
+                    username = usernames.get(int(user_id), "Unknown")
+                    print(Fore.GREEN + f"Username for User ID {user_id}: {username}")
+                    with open("possible_passwords.txt", "a") as f:
+                        modified0 = username
+                        modified = f"{username}123"
+                        modified1 = f"{username}1234"
+                        modified2 = f"123{username}"
+                        modified3 = f"1234{username}"
+                        f.write(f"Possible Passwords For {username}:\n")
+                        f.write(f"{modified0}\n")
+                        f.write(f"{modified}\n")
+                        f.write(f"{modified1}\n")
+                        f.write(f"{modified2}\n")
+                        f.write(f"{modified3}\n")
+                    print(Fore.GREEN + f"Possible passwords for {username} saved to possible_passwords.txt")
+                else:
+                    print(Fore.RED + f"Could not fetch username for User ID {user_id}")
+
         else:
             print(Fore.YELLOW + f"No items with '{search_term}' found in inventory or avatar for user {user_id}.")
 
@@ -188,16 +268,23 @@ def afk_mode(search_term):
 def run():
     print(Fore.RED + ASCII_ART)
     search_term = input("Enter the name of the item you're searching for: ")
+    user_id_func = get_user_id_func()  # Get the user ID function based on account age
     while True:
-        mode = input("Choose mode:\n1. Normal search (stop when found)\n2. AFK mode (keep running, send webhook)\nEnter 1 or 2: ")
+        fetch_choice = input("Fetch usernames and generate possible passwords?\n1. Yes\n2. No\nEnter 1 or 2: ")
+        if fetch_choice in ['1', '2']:
+            fetch_usernames = fetch_choice == '1'
+            break
+        print(Fore.RED + "Invalid choice. Please enter 1 or 2.")
+    while True:
+        mode = input("Choose mode:\n1. Normal search🔍 (stop when found)\n2. AFK mode🌙 (keep running, send webhook)\nEnter 1 or 2: ")
         if mode in ['1', '2']:
             break
         print(Fore.RED + "Invalid choice. Please enter 1 or 2.")
 
     if mode == '1':
-        normal_search(search_term)
+        normal_search(search_term, user_id_func, fetch_usernames)
     else:
-        afk_mode(search_term)
+        afk_mode(search_term, user_id_func, fetch_usernames)
 
 if __name__ == "__main__":
     run()
